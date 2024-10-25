@@ -1,12 +1,14 @@
 import os
-import google.generativeai as genai
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, HttpUrl, Field
-from github import Github, GithubException, Auth
-import logging
 import json
+import logging
+import typing_extensions
+from typing import Dict, Any, Tuple, List
+
+import google.generativeai as genai
 from dotenv import load_dotenv
-from typing import Dict, Any, Tuple
+from fastapi import FastAPI, HTTPException
+from github import Github, GithubException, Auth
+from pydantic import BaseModel, HttpUrl, Field
 
 load_dotenv()
 
@@ -20,6 +22,12 @@ class ReviewRequest(BaseModel):
     assignment_description: str
     github_repo_url: HttpUrl
     candidate_level: str = Field(..., pattern="^(Junior|Middle|Senior)$")
+
+
+class Review(typing_extensions.TypedDict):
+    downsides_and_comments: list[str]
+    conclusion: str
+    rating: str
 
 
 @app.post("/review")
@@ -99,7 +107,12 @@ async def analyze_code_with_gemini(files: Dict[str, str], description: str, leve
     """
     prompt = create_prompt(files, description, level)
     try:
-        response = genai.GenerativeModel("gemini-1.5-flash").generate_content(prompt)
+        response = genai.GenerativeModel("gemini-1.5-flash").generate_content(
+            prompt,
+            generation_config=genai.GenerationConfig(
+                response_mime_type="application/json", response_schema=Review
+            )
+        )
         return response.text
     except Exception as e:
         logging.error(f"Error with Gemini API: {e}")
@@ -108,7 +121,7 @@ async def analyze_code_with_gemini(files: Dict[str, str], description: str, leve
 
 def create_prompt(files: Dict[str, str], description: str, level: str) -> str:
     """
-    Create a prompt for the Gemini AI model based on the files, description, and candidate level.
+    Create a prompt for the Gemini AI model.
 
     :param files: A dictionary containing the code files to analyze.
     :param description: The assignment description for context.
@@ -120,39 +133,37 @@ def create_prompt(files: Dict[str, str], description: str, level: str) -> str:
         prompt += f"File: {filename}\n{content}\n\n"
     prompt += (
         f"""Assignment: {description}\n
-        Please provide feedback in the following format: Downsides/Comments, Rating (?/10), Conclusion.
-        Please use the following JSON schema:\n
-        {{\n"Downsides/Comments": "<Your comments here>",\n"Rating": "<Your rating here>",\n"Conclusion": "<Your conclusion here>"\n}}""")
+        Based on the level of the developer and his Assignment, review the code in the following format:
+        1. Downsides and Comments: List specific issues or areas for improvement.
+        2. Conclusion: Summarize your overall assessment.
+        3. Rating: Give a rating out of 10.
+        You have to give me only these three paragraphs (Downsides and Comments, Conclusion, Rating).
+        Follow this structure:
+        "downsides_and_comments": [
+            "Comment 1",
+            "Comment 2",
+            ...
+        ],
+        "conclusion": "Overall conclusion",
+        "rating": "Rating/10"
+        """
+    )
     return prompt
 
 
-def parse_review(review: str) -> Tuple[str, str, str]:
+def parse_review(review: str) -> Tuple[List[str], str, str]:
     """
-    Parse the review returned by Gemini AI into structured components.
+    Parse the review response from Gemini AI.
 
-    :param review: The raw comments string returned by the Gemini AI.
-    :return: A tuple containing downsides/comments, rating, and conclusion.
+    :param review: response from Gemini AI.
+    :return: A tuple containing: list of downsides and comments, rating, conclusion.
     """
     try:
-        json_part = review.strip().replace("```json", "").replace("```", "").strip()
-        parsed_review = json.loads(json_part)
-
-        rating = parsed_review.get("Rating", "N/A")
-        conclusion = parsed_review.get("Conclusion", "")
-        downsides_or_comments = format_downsides_and_comments(parsed_review.get("Downsides/Comments", ""))
-
+        parsed_data = json.loads(review)
+        downsides_and_comments = parsed_data.get("downsides_and_comments", [])
+        rating = parsed_data.get("rating", "N/A")
+        conclusion = parsed_data.get("conclusion", "")
+        return downsides_and_comments, rating, conclusion
     except json.JSONDecodeError as e:
-        logging.error(f"Error parsing JSON from comments: {e}")
-        return review, "N/A", "The code review is complete based on the provided files."
-
-    return downsides_or_comments, rating, conclusion
-
-
-def format_downsides_and_comments(text: str) -> str:
-    """
-    Format the downsides/comments text by removing extra formatting.
-
-    :param text: The raw downsides/comments text.
-    :return: A cleaned-up version of the text with unwanted formatting removed.
-    """
-    return text.replace('\n\n', ' ').replace('**', '')
+        logging.error(f"Error parsing JSON: {e}")
+        return [], "N/A", "Error parsing review"

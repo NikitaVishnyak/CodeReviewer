@@ -14,11 +14,11 @@ async def test_review_code_success(async_client):
         "/review",
         json={
             "assignment_description": "Review this code.",
-            "github_repo_url": "https://github.com/NikitaVishnyak/string_processing",  # Заміна на ваш реальний URL
+            "github_repo_url": "https://github.com/NikitaVishnyak/string_processing",
             "candidate_level": "Junior"
         }
     )
-    assert response.status_code == 200  # Перевірка статусу
+    assert response.status_code == 200
 
 @pytest.mark.anyio
 async def test_review_code_invalid_repo(async_client):
@@ -40,7 +40,7 @@ async def test_review_code_invalid_level(async_client):
         "/review",
         json={
             "assignment_description": "Review this code.",
-            "github_repo_url": "https://github.com/NikitaVishnyak/string_processing",  # Заміна на ваш реальний URL
+            "github_repo_url": "https://github.com/NikitaVishnyak/string_processing",
             "candidate_level": "InvalidLevel"
         }
     )
