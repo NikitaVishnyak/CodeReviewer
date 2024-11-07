@@ -23,20 +23,11 @@ This project is a backend solution for reviewing coding assignments from GitHub 
     cd CodeReviewer
     ```
 
-2. Install dependencies with `pip`.
+2. Install dependencies with **Poetry**.
 
-        First, create a virtual environment and activate it:
-
-        ```bash
-        python -m venv venv
-        source venv/bin/activate  # On Windows use `venv\Scripts\activate`
-        ```
-
-        Then install the dependencies:
-
-        ```bash
-        pip install -r requirements.txt
-        ```
+    ```bash
+    poetry install
+    ```
 
 3. Create a `.env` file in the project root and add your environment variables:
 
@@ -47,7 +38,7 @@ This project is a backend solution for reviewing coding assignments from GitHub 
 
 ## Running the Application
 
-To start the FastAPI server, run the following command:
+To start the FastAPI server, use the following command:
 
 ```bash
-uvicorn app.main:app --reload
+poetry run uvicorn app.main:app --reload
