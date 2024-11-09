@@ -6,16 +6,26 @@ from typing import Dict, Any, Tuple, List
 
 import google.generativeai as genai
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from slowapi import Limiter
+from fastapi import FastAPI, HTTPException, Request
 from github import Github, GithubException, Auth
 from pydantic import BaseModel, HttpUrl, Field
+from slowapi.util import get_remote_address
+
+from cache.caching import generate_repo_cache_key, get_cached_github_repo, set_cached_github_repo
 
 load_dotenv()
 
+app = FastAPI(title='CodeReviewer')
 genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
 logging.basicConfig(level=logging.INFO)
 
-app = FastAPI()
+limiter = Limiter(
+    key_func=get_remote_address,
+    strategy="fixed-window",
+    storage_uri=os.getenv('REDIS_URL'),
+    enabled=bool(os.getenv('RATE_LIMITING_ENABLED')),
+)
 
 
 class ReviewRequest(BaseModel):
@@ -31,20 +41,30 @@ class Review(typing_extensions.TypedDict):
 
 
 @app.post("/review")
-async def review_code(request: ReviewRequest) -> Dict[str, Any]:
+@limiter.limit("5/5minute", per_method=True)
+async def review_code(request: Request, review_request: ReviewRequest) -> Dict[str, Any]:
     """
     Review code from a GitHub repository using Gemini AI.
 
-    :param request: The review request containing assignment description, GitHub repository URL, and candidate level.
+    :param request: The incoming HTTP request object, used by rate limiter.
+    :param review_request: The review request containing assignment description, GitHub repository URL, and candidate level.
     :return: A dictionary with files found, downsides/comments, rating, and conclusion.
     """
-    repo_content = await fetch_github_repo(request.github_repo_url)
+    repo_key = generate_repo_cache_key(review_request.github_repo_url, review_request.candidate_level)
+    cached_repo = await get_cached_github_repo(repo_key)
+    if cached_repo:
+        repo_content = cached_repo
+    else:
+        logging.info("Fetching github repository...")
+        repo_content = await fetch_github_repo(review_request.github_repo_url)
+        if not repo_content:
+            raise HTTPException(status_code=500, detail="No files found in the repository or unable to fetch content.")
 
-    if not repo_content:
-        raise HTTPException(status_code=500, detail="No files found in the repository or unable to fetch content.")
+        await set_cached_github_repo(repo_key, repo_content)
 
-    review = await analyze_code_with_gemini(repo_content, request.assignment_description, request.candidate_level)
-
+    logging.info("Analyzing code with Gemini...")
+    review = await analyze_code_with_gemini(repo_content, review_request.assignment_description,
+                                            review_request.candidate_level)
     if not review:
         raise HTTPException(status_code=500, detail="Could not analyze code with Gemini.")
 

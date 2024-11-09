@@ -10,6 +10,9 @@ python = "^3.10"
 fastapi = "^0.115.4"
 uvicorn = {extras = ["standart"], version = "^0.32.0"}
 google-generativeai = "^0.8.3"
+aioredis = "^2.0.1"
+slowapi = "^0.1.9"
+redis = "^5.2.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.3"
