@@ -14,6 +14,7 @@ from slowapi.util import get_remote_address
 
 from cache.caching import generate_repo_cache_key, get_cached_github_repo, set_cached_github_repo
 
+
 load_dotenv()
 
 app = FastAPI(title='CodeReviewer')
@@ -22,7 +23,7 @@ logging.basicConfig(level=logging.INFO)
 
 limiter = Limiter(
     key_func=get_remote_address,
-    strategy="fixed-window",
+    strategy='fixed-window',
     storage_uri=os.getenv('REDIS_URL'),
     enabled=bool(os.getenv('RATE_LIMITING_ENABLED')),
 )
@@ -31,7 +32,7 @@ limiter = Limiter(
 class ReviewRequest(BaseModel):
     assignment_description: str
     github_repo_url: HttpUrl
-    candidate_level: str = Field(..., pattern="^(Junior|Middle|Senior)$")
+    candidate_level: str = Field(..., pattern='^(Junior|Middle|Senior)$')
 
 
 class Review(typing_extensions.TypedDict):
@@ -40,8 +41,8 @@ class Review(typing_extensions.TypedDict):
     rating: str
 
 
-@app.post("/review")
-@limiter.limit("5/5minute", per_method=True)
+@app.post('/review')
+@limiter.limit('5/5minute', per_method=True)
 async def review_code(request: Request, review_request: ReviewRequest) -> Dict[str, Any]:
     """
     Review code from a GitHub repository using Gemini AI.
@@ -71,10 +72,10 @@ async def review_code(request: Request, review_request: ReviewRequest) -> Dict[s
     downsides_or_comments, rating, conclusion = parse_review(review)
 
     return {
-        "files_found": list(repo_content.keys()),
-        "downsides or comments": downsides_or_comments,
-        "rating": rating,
-        "conclusion": conclusion
+        'files_found': list(repo_content.keys()),
+        'downsides or comments': downsides_or_comments,
+        'rating': rating,
+        'conclusion': conclusion
     }
 
 
@@ -87,7 +88,7 @@ async def fetch_github_repo(repo_url: str) -> Dict[str, str]:
     """
     github_api_key = os.getenv('GITHUB_API_KEY')
     g = Github(auth=Auth.Token(github_api_key))
-    repo_name = repo_url.path.strip("/")
+    repo_name = repo_url.path.strip('/')
 
     try:
         repo = g.get_repo(repo_name)
@@ -97,17 +98,17 @@ async def fetch_github_repo(repo_url: str) -> Dict[str, str]:
         else:
             raise HTTPException(status_code=500, detail="An error occurred while fetching the repository.")
 
-    contents = repo.get_contents("")
+    contents = repo.get_contents('')
     files_content = {}
 
     while contents:
         file_content = contents.pop(0)
 
-        if file_content.type == "dir":
+        if file_content.type == 'dir':
             contents.extend(repo.get_contents(file_content.path))
         else:
             try:
-                decoded_content = file_content.decoded_content.decode("utf-8")
+                decoded_content = file_content.decoded_content.decode('utf-8')
                 logging.info(f"Processing file: {file_content.path}")
                 files_content[file_content.path] = decoded_content
             except UnicodeDecodeError:
@@ -127,10 +128,10 @@ async def analyze_code_with_gemini(files: Dict[str, str], description: str, leve
     """
     prompt = create_prompt(files, description, level)
     try:
-        response = genai.GenerativeModel("gemini-1.5-flash").generate_content(
+        response = genai.GenerativeModel('gemini-1.5-flash').generate_content(
             prompt,
             generation_config=genai.GenerationConfig(
-                response_mime_type="application/json", response_schema=Review
+                response_mime_type='application/json', response_schema=Review
             )
         )
         return response.text
@@ -180,10 +181,10 @@ def parse_review(review: str) -> Tuple[List[str], str, str]:
     """
     try:
         parsed_data = json.loads(review)
-        downsides_and_comments = parsed_data.get("downsides_and_comments", [])
-        rating = parsed_data.get("rating", "N/A")
-        conclusion = parsed_data.get("conclusion", "")
+        downsides_and_comments = parsed_data.get('downsides_and_comments', [])
+        rating = parsed_data.get('rating', 'N/A')
+        conclusion = parsed_data.get('conclusion', '')
         return downsides_and_comments, rating, conclusion
     except json.JSONDecodeError as e:
         logging.error(f"Error parsing JSON: {e}")
-        return [], "N/A", "Error parsing review"
+        return [], 'N/A', 'Error parsing review'

@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  codereviewer:
+    build: .
+    environment:
+      REDIS_URL: ${REDIS_URL}
+      GITHUB_API_KEY: ${GITHUB_API_KEY}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      RATE_LIMITING_ENABLED: ${RATE_LIMITING_ENABLED}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+
+  redis:
+    image: "redis:latest"
+    container_name: redis
+    ports:
+      - "6379:6379"
